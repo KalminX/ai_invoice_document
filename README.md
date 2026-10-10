@@ -78,6 +78,19 @@ Designed for Accounts Payable (AP) and finance automation teams, this platform i
 
 ---
 
+
+## 🖼️ Application Screenshots
+
+| Multi-Format Invoice Intake & Parsing | Review Workbench & Math Validation |
+|:---:|:---:|
+| ![Invoice Intake](screenshots/frame_001.png) | ![Review Workbench](screenshots/frame_003.png) |
+| *Document extraction with bounding-box OCR highlights* | *Interactive line item reconciliation & confidence scores* |
+
+| Smart GL Coding & Rule Suggestions | Export & ERP Integration |
+|:---:|:---:|
+| ![GL Coding](screenshots/frame_004.png) | ![Export & ERP](screenshots/frame_005.png) |
+| *Automated chart-of-accounts mapping & policy checks* | *One-click sync to QuickBooks, NetSuite, & Xero formats* |
+
 ## 🚀 Quick Start Guide
 
 ### Prerequisites
