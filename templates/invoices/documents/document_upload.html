@@ -1,0 +1,136 @@
+{% extends "invoices/base.html" %}
+
+{% block page_title %}Upload Invoice Document{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h3 class="card-title">Document Intake & AI Extraction</h3>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+          Upload digital PDF, PNG, or JPEG invoice files. All inputs are safely verified, hashed, and processed.
+        </p>
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="POST" enctype="multipart/form-data" action="{% url 'invoices:document_upload' %}">
+        {% csrf_token %}
+
+        <!-- Dropzone -->
+        <div class="upload-dropzone" id="upload-dropzone">
+          <div class="upload-icon">📁</div>
+          <h4 style="font-size: 1rem; font-weight: 600; color: var(--text-main);">
+            Click to upload or drag & drop invoice document
+          </h4>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
+            Supports PDF, PNG, JPEG up to 10MB
+          </p>
+          <input type="file" id="id_document_file" name="document_file" accept=".pdf,.png,.jpg,.jpeg" style="display: none;" required>
+          
+          <div id="upload-file-info" style="display: none; margin-top: 14px; padding: 8px 16px; background: #eff6ff; border-radius: 6px; border: 1px solid #bfdbfe; display: inline-block;">
+            <strong id="upload-file-name" style="color: #1d4ed8; font-size: 0.85rem;"></strong>
+            <span id="upload-file-size" style="color: #64748b; font-size: 0.75rem; margin-left: 6px;"></span>
+          </div>
+        </div>
+
+        <!-- Processing Options -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+          <div>
+            <label class="form-label">Processing Pipeline Mode</label>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;">
+              <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                <input type="radio" name="process_mode" value="instant" checked style="margin-top: 3px;">
+                <div>
+                  <strong>Instant Extraction</strong>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Process and immediately open the split-screen review workspace.</div>
+                </div>
+              </label>
+              <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                <input type="radio" name="process_mode" value="async_queue" style="margin-top: 3px;">
+                <div>
+                  <strong>Background Queue (Asynchronous)</strong>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Enqueue job into DB background queue for worker processing.</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label class="form-label" for="id_force_engine">Extraction Engine</label>
+            <select name="force_engine" id="id_force_engine" class="form-select" style="margin-top: 6px;">
+              <option value="" selected>Auto (Gemini AI if API Key configured, otherwise Mock)</option>
+              <option value="gemini">Google Gemini 2.5 Flash (Strict Pydantic Schema)</option>
+              <option value="mock">Offline Mock Engine (Predefined fixture presets)</option>
+            </select>
+            <p style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px;">
+              {% if GEMINI_KEY_CONFIGURED %}
+                ✓ Gemini API Key configured in environment.
+              {% else %}
+                ℹ️ No Gemini API Key detected. Using offline high-fidelity mock engine.
+              {% endif %}
+            </p>
+          </div>
+        </div>
+
+        <div style="margin-top: 28px; display: flex; justify-content: flex-end; gap: 12px;">
+          <a href="{% url 'invoices:document_list' %}" class="btn btn-secondary">Cancel</a>
+          <button type="submit" class="btn btn-primary btn-lg">
+            <span>Start Extraction Pipeline →</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Synthetic Test Case Fixture Generator -->
+  <div class="card" style="border: 1px dashed #cbd5e1; background-color: #f8fafc;">
+    <div class="card-header" style="background: transparent;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span>🧪</span>
+        <span class="card-title" style="font-size: 0.95rem;">Pre-Built Portfolio Test Scenarios</span>
+      </div>
+      <span style="font-size: 0.75rem; color: var(--text-muted);">Click any fixture below to test validation rules</span>
+    </div>
+    <div class="card-body" style="padding: 16px 20px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;">
+        <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Acme Cloud Services</div>
+          <div style="font-size: 0.75rem; color: #10b981; margin-top: 2px;">✓ Clean SaaS Invoice ($2,646.00)</div>
+          <a href="/media/fixtures/acme_cloud_invoice.pdf" target="_blank" style="font-size: 0.72rem; color: #3b82f6; text-decoration: underline; display: inline-block; margin-top: 6px;">View PDF File ↗</a>
+        </div>
+
+        <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Metro Office Supplies</div>
+          <div style="font-size: 0.75rem; color: #ef4444; margin-top: 2px;">⚠️ Arithmetic Mismatch Error</div>
+          <a href="/media/fixtures/math_error_invoice.pdf" target="_blank" style="font-size: 0.72rem; color: #3b82f6; text-decoration: underline; display: inline-block; margin-top: 6px;">View PDF File ↗</a>
+        </div>
+
+        <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Duplicate Invoice Test</div>
+          <div style="font-size: 0.75rem; color: #ef4444; margin-top: 2px;">⚠️ Duplicate Supplier + Invoice #</div>
+          <a href="/media/fixtures/duplicate_invoice.pdf" target="_blank" style="font-size: 0.72rem; color: #3b82f6; text-decoration: underline; display: inline-block; margin-top: 6px;">View PDF File ↗</a>
+        </div>
+
+        <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Vanguard Quantum Robotics</div>
+          <div style="font-size: 0.75rem; color: #f59e0b; margin-top: 2px;">⚠️ Unregistered Supplier Warning</div>
+          <a href="/media/fixtures/unknown_supplier_invoice.pdf" target="_blank" style="font-size: 0.72rem; color: #3b82f6; text-decoration: underline; display: inline-block; margin-top: 6px;">View PDF File ↗</a>
+        </div>
+
+        <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Missing Fields Invoice</div>
+          <div style="font-size: 0.75rem; color: #ef4444; margin-top: 2px;">⚠️ Missing Vendor & Number</div>
+          <a href="/media/fixtures/missing_fields_invoice.pdf" target="_blank" style="font-size: 0.72rem; color: #3b82f6; text-decoration: underline; display: inline-block; margin-top: 6px;">View PDF File ↗</a>
+        </div>
+
+        <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Blurry Scan Image</div>
+          <div style="font-size: 0.75rem; color: #8b5cf6; margin-top: 2px;">⚠️ Low Confidence Scan (PNG)</div>
+          <a href="/media/fixtures/low_confidence_invoice.png" target="_blank" style="font-size: 0.72rem; color: #3b82f6; text-decoration: underline; display: inline-block; margin-top: 6px;">View PNG File ↗</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

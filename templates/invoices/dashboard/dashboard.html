@@ -1,0 +1,224 @@
+{% extends "invoices/base.html" %}
+
+{% block page_title %}Financial Pipeline Dashboard{% endblock %}
+
+{% block content %}
+<!-- Metrics Summary Grid -->
+<div class="metrics-grid">
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Total Spend Extracted</span>
+      <span class="metric-icon">💵</span>
+    </div>
+    <div class="metric-value">${{ total_spend|floatformat:2 }}</div>
+    <div class="metric-footer">Across approved & synced invoices</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Pending Human Review</span>
+      <span class="metric-icon">⏳</span>
+    </div>
+    <div class="metric-value" style="color: #2563eb;">{{ pending_review }}</div>
+    <div class="metric-footer">{{ flagged_issues_docs }} with flagged anomalies</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Active Exceptions</span>
+      <span class="metric-icon">⚠️</span>
+    </div>
+    <div class="metric-value" style="color: {% if total_exceptions > 0 %}#ef4444{% else %}#10b981{% endif %};">
+      {{ total_exceptions }}
+    </div>
+    <div class="metric-footer"><a href="{% url 'invoices:exception_queue' %}" style="color: inherit; text-decoration: underline;">Open Exception Queue →</a></div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Avg AI Confidence</span>
+      <span class="metric-icon">🤖</span>
+    </div>
+    <div class="metric-value" style="color: #7c3aed;">{{ avg_conf_pct }}%</div>
+    <div class="metric-footer">Structured Gemini & Mock models</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Exported to Ledger</span>
+      <span class="metric-icon">🏛️</span>
+    </div>
+    <div class="metric-value" style="color: #059669;">{{ exported_docs }}</div>
+    <div class="metric-footer">{{ approved_docs }} ready for export</div>
+  </div>
+</div>
+
+<!-- Exception Triage Cards -->
+<div class="card" style="border-left: 4px solid #f59e0b;">
+  <div class="card-header" style="background-color: #fffbeb;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 1.1rem;">⚠️</span>
+      <span class="card-title" style="color: #92400e;">Independent Validation & Exception Triage</span>
+    </div>
+    <a href="{% url 'invoices:exception_queue' %}" class="btn btn-secondary btn-sm">View All Exceptions ({{ total_exceptions }})</a>
+  </div>
+  <div class="card-body" style="padding: 16px 20px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+      <a href="{% url 'invoices:exception_queue' %}?category=ARITHMETIC" style="text-decoration: none; color: inherit;">
+        <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; text-align: center; transition: all 0.15s ease;" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='var(--border-color)'">
+          <div style="font-size: 1.25rem; font-weight: 700; color: #ef4444;">{{ math_errors }}</div>
+          <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase; margin-top: 4px;">Math Mismatches</div>
+        </div>
+      </a>
+      <a href="{% url 'invoices:exception_queue' %}?category=DUPLICATES" style="text-decoration: none; color: inherit;">
+        <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; text-align: center; transition: all 0.15s ease;" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='var(--border-color)'">
+          <div style="font-size: 1.25rem; font-weight: 700; color: #ef4444;">{{ duplicate_errors }}</div>
+          <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase; margin-top: 4px;">Duplicate Invoices</div>
+        </div>
+      </a>
+      <a href="{% url 'invoices:exception_queue' %}?category=UNKNOWN_SUPPLIER" style="text-decoration: none; color: inherit;">
+        <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; text-align: center; transition: all 0.15s ease;" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='var(--border-color)'">
+          <div style="font-size: 1.25rem; font-weight: 700; color: #f59e0b;">{{ unknown_suppliers }}</div>
+          <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase; margin-top: 4px;">Unknown Suppliers</div>
+        </div>
+      </a>
+      <a href="{% url 'invoices:exception_queue' %}?category=MISSING_FIELDS" style="text-decoration: none; color: inherit;">
+        <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; text-align: center; transition: all 0.15s ease;" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='var(--border-color)'">
+          <div style="font-size: 1.25rem; font-weight: 700; color: #ef4444;">{{ missing_fields }}</div>
+          <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase; margin-top: 4px;">Missing Fields</div>
+        </div>
+      </a>
+      <a href="{% url 'invoices:exception_queue' %}?category=LOW_CONFIDENCE" style="text-decoration: none; color: inherit;">
+        <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; text-align: center; transition: all 0.15s ease;" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='var(--border-color)'">
+          <div style="font-size: 1.25rem; font-weight: 700; color: #8b5cf6;">{{ low_confidence }}</div>
+          <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase; margin-top: 4px;">Low Confidence (&lt;80%)</div>
+        </div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+  <!-- Recent Invoices Table -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Recent Invoices & Extractions</span>
+      <a href="{% url 'invoices:document_list' %}" class="btn btn-secondary btn-sm">View All Invoices →</a>
+    </div>
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Document</th>
+            <th>Supplier</th>
+            <th>Invoice #</th>
+            <th>Total</th>
+            <th>Confidence</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for doc in recent_documents %}
+            <tr>
+              <td>
+                <div style="font-weight: 600;">{{ doc.original_filename }}</div>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">{{ doc.created_at|date:"M d, Y H:i" }}</div>
+              </td>
+              <td>
+                {% if doc.invoice and doc.invoice.supplier %}
+                  <span style="font-weight: 600; color: var(--text-main);">{{ doc.invoice.supplier.name }}</span>
+                {% elif doc.invoice and doc.invoice.supplier_name_raw %}
+                  <span style="color: var(--warning-text); font-style: italic;">{{ doc.invoice.supplier_name_raw }} (Unlinked)</span>
+                {% else %}
+                  <span style="color: var(--text-light);">N/A</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if doc.invoice and doc.invoice.invoice_number %}
+                  <code>#{{ doc.invoice.invoice_number }}</code>
+                {% else %}
+                  <span style="color: var(--text-light); font-size: 0.75rem;">None</span>
+                {% endif %}
+              </td>
+              <td style="font-weight: 600;">
+                {% if doc.invoice %}
+                  ${{ doc.invoice.total_amount|floatformat:2 }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>
+                {% if doc.confidence_score %}
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <div style="width: 40px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden;">
+                      <div style="width: {{ doc.confidence_score|floatformat:2|slice:'2:' }}%; height: 100%; background: {% if doc.confidence_score >= 0.8 %}#10b981{% else %}#ef4444{% endif %};"></div>
+                    </div>
+                    <span style="font-size: 0.72rem; font-weight: 600;">{% widthratio doc.confidence_score 1 100 %}%</span>
+                  </div>
+                {% else %}
+                  <span style="color: var(--text-light); font-size: 0.72rem;">N/A</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge badge-{{ doc.status|lower|slugify }}">
+                  {{ doc.get_status_display }}
+                </span>
+              </td>
+              <td>
+                {% if doc.invoice %}
+                  <a href="{% url 'invoices:invoice_review' doc.invoice.id %}" class="btn btn-secondary btn-sm">
+                    Review
+                  </a>
+                {% else %}
+                  <form method="POST" action="{% url 'invoices:document_reprocess' doc.id %}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-secondary btn-sm">Reprocess</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="7" style="text-align: center; padding: 30px; color: var(--text-muted);">
+                No invoice documents uploaded yet. Click "+ Upload Invoice" to begin.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Recent Audit Activity Timeline -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Immutable Audit Trail</span>
+    </div>
+    <div class="card-body" style="padding: 12px 16px;">
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        {% for act in recent_activities %}
+          <div style="display: flex; gap: 10px; font-size: 0.8rem; border-left: 2px solid #e2e8f0; padding-left: 12px; position: relative;">
+            <div style="position: absolute; left: -5px; top: 4px; width: 8px; height: 8px; border-radius: 50%; background: #3b82f6;"></div>
+            <div style="flex: 1;">
+              <div style="font-weight: 600; color: var(--text-main);">
+                {{ act.get_action_display }}
+              </div>
+              <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 2px;">
+                {{ act.description }}
+              </div>
+              <div style="color: var(--text-light); font-size: 0.68rem; margin-top: 3px;">
+                {{ act.created_at|timesince }} ago by <strong>{{ act.user.username|default:"System" }}</strong>
+              </div>
+            </div>
+          </div>
+        {% empty %}
+          <div style="text-align: center; color: var(--text-muted); padding: 20px;">
+            No audit logs recorded yet.
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

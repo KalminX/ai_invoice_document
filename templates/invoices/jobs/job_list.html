@@ -1,0 +1,152 @@
+{% extends "invoices/base.html" %}
+
+{% block page_title %}Background Processing Queue{% endblock %}
+
+{% block content %}
+<div class="metrics-grid" style="grid-template-columns: repeat(4, 1fr);">
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Pending Jobs</span>
+      <span class="metric-icon">⏳</span>
+    </div>
+    <div class="metric-value" style="color: #2563eb;">{{ pending_count }}</div>
+    <div class="metric-footer">Waiting in DB job queue</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Running Jobs</span>
+      <span class="metric-icon">⚙️</span>
+    </div>
+    <div class="metric-value" style="color: #7c3aed;">{{ running_count }}</div>
+    <div class="metric-footer">Currently processing</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Completed Jobs</span>
+      <span class="metric-icon">✅</span>
+    </div>
+    <div class="metric-value" style="color: #059669;">{{ completed_count }}</div>
+    <div class="metric-footer">Successfully extracted</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Failed Jobs</span>
+      <span class="metric-icon">❌</span>
+    </div>
+    <div class="metric-value" style="color: #ef4444;">{{ failed_count }}</div>
+    <div class="metric-footer">Max retry attempts reached</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <div>
+      <span class="card-title">Database-Backed Background Job Queue</span>
+      <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+        Asynchronous extraction and export runner powered by Django management command (<code>python manage.py process_jobs --watch</code>).
+      </p>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <form method="POST" action="{% url 'invoices:job_process_now' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary btn-sm">
+          ▶ Process Pending Jobs Now
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Job ID</th>
+          <th>Type</th>
+          <th>Document</th>
+          <th>Attempts</th>
+          <th>Scheduled At</th>
+          <th>Status</th>
+          <th style="text-align: right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+          <tr>
+            <td>
+              <code>#{{ job.id }}</code>
+            </td>
+            <td style="font-weight: 600; font-size: 0.8rem;">
+              {{ job.get_job_type_display }}
+            </td>
+            <td>
+              <div style="font-weight: 600;">{{ job.document.original_filename }}</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted);">Status: {{ job.document.get_status_display }}</div>
+            </td>
+            <td>
+              <span style="font-size: 0.78rem; font-family: var(--font-mono);">
+                {{ job.attempts }} / {{ job.max_attempts }}
+              </span>
+            </td>
+            <td style="font-size: 0.78rem; color: var(--text-muted);">
+              {{ job.scheduled_at|date:"Y-m-d H:i:s" }} UTC
+            </td>
+            <td>
+              <span class="badge badge-{{ job.status|lower }}">
+                {{ job.get_status_display }}
+              </span>
+            </td>
+            <td style="text-align: right;">
+              <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+                {% if job.document.invoice %}
+                  <a href="{% url 'invoices:invoice_review' job.document.invoice.id %}" class="btn btn-secondary btn-sm">
+                    Review
+                  </a>
+                {% endif %}
+
+                {% if job.error_log %}
+                  <button type="button" class="btn btn-secondary btn-sm" data-modal-target="error-modal-{{ job.id }}" style="color: #ef4444;">
+                    Error Log
+                  </button>
+                {% endif %}
+
+                {% if job.status == 'FAILED' or job.status == 'PENDING' %}
+                  <form method="POST" action="{% url 'invoices:job_retry' job.id %}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary btn-sm">Execute</button>
+                  </form>
+                {% endif %}
+              </div>
+
+              {% if job.error_log %}
+                <div class="modal-overlay" id="error-modal-{{ job.id }}">
+                  <div class="modal-box" style="max-width: 700px; text-align: left;">
+                    <div class="modal-header">
+                      <h3 style="font-size: 0.95rem; font-weight: 700; color: #b91c1c;">Job #{{ job.id }} Error Traceback</h3>
+                      <button type="button" style="background: none; border: none; font-size: 1.2rem; cursor: pointer;" data-modal-close>✕</button>
+                    </div>
+                    <div class="modal-body">
+                      <pre class="code-block" style="color: #fca5a5;">{{ job.error_log }}</pre>
+                    </div>
+                    <div class="modal-footer">
+                      <button type="button" class="btn btn-secondary" data-modal-close>Close</button>
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
+              No background jobs in the queue.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,138 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}AI Invoice & Document Extraction Pipeline{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="app-sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">⚡</div>
+        <div class="sidebar-brand-text">
+          <h1>DocExtract AI</h1>
+          <span>Finance & Accounts Payable</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Core Workspace</div>
+        <a href="{% url 'invoices:dashboard' %}" class="nav-item {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+          <div class="nav-item-content">
+            <span class="nav-item-icon">📊</span>
+            <span>Dashboard</span>
+          </div>
+        </a>
+        <a href="{% url 'invoices:document_upload' %}" class="nav-item {% if request.resolver_match.url_name == 'document_upload' %}active{% endif %}">
+          <div class="nav-item-content">
+            <span class="nav-item-icon">📤</span>
+            <span>Upload Document</span>
+          </div>
+        </a>
+        <a href="{% url 'invoices:document_list' %}" class="nav-item {% if request.resolver_match.url_name == 'document_list' %}active{% endif %}">
+          <div class="nav-item-content">
+            <span class="nav-item-icon">📑</span>
+            <span>Invoices Repository</span>
+          </div>
+          {% if NAV_PENDING_REVIEW_COUNT %}
+            <span class="nav-badge info">{{ NAV_PENDING_REVIEW_COUNT }}</span>
+          {% endif %}
+        </a>
+
+        <div class="nav-section-title">Validation & Triage</div>
+        <a href="{% url 'invoices:exception_queue' %}" class="nav-item {% if request.resolver_match.url_name == 'exception_queue' %}active{% endif %}">
+          <div class="nav-item-content">
+            <span class="nav-item-icon">⚠️</span>
+            <span>Exception Queue</span>
+          </div>
+          {% if NAV_EXCEPTIONS_COUNT %}
+            <span class="nav-badge danger">{{ NAV_EXCEPTIONS_COUNT }}</span>
+          {% endif %}
+        </a>
+
+        <div class="nav-section-title">Accounting & Integrations</div>
+        <a href="{% url 'invoices:export_ledger' %}" class="nav-item {% if request.resolver_match.url_name == 'export_ledger' %}active{% endif %}">
+          <div class="nav-item-content">
+            <span class="nav-item-icon">🏛️</span>
+            <span>Accounting Ledger</span>
+          </div>
+          {% if NAV_APPROVED_UNEXPORTED_COUNT %}
+            <span class="nav-badge warning" title="Approved invoices waiting to export">{{ NAV_APPROVED_UNEXPORTED_COUNT }} ready</span>
+          {% endif %}
+        </a>
+        <a href="{% url 'invoices:job_list' %}" class="nav-item {% if request.resolver_match.url_name == 'job_list' %}active{% endif %}">
+          <div class="nav-item-content">
+            <span class="nav-item-icon">⚙️</span>
+            <span>Processing Jobs</span>
+          </div>
+          {% if NAV_PENDING_JOBS_COUNT %}
+            <span class="nav-badge info">{{ NAV_PENDING_JOBS_COUNT }}</span>
+          {% endif %}
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-profile">
+          <div class="user-avatar">
+            {{ request.user.first_name|first|default:request.user.username|first|upper }}
+          </div>
+          <div class="user-info">
+            <div class="user-name">{{ request.user.get_full_name|default:request.user.username }}</div>
+            <div class="user-role">{% if request.user.is_superuser %}Director of Finance{% else %}AP Specialist{% endif %}</div>
+          </div>
+        </div>
+        <a href="{% url 'invoices:logout' %}" class="logout-btn" title="Sign Out">✕</a>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <!-- Topbar -->
+      <header class="app-topbar">
+        <div class="topbar-left">
+          <h2 class="topbar-title">{% block page_title %}Dashboard{% endblock %}</h2>
+        </div>
+        <div class="topbar-right">
+          {% if GEMINI_KEY_CONFIGURED %}
+            <span class="mode-pill ai-gemini" title="Gemini 2.5 Flash API active with strict Pydantic JSON extraction">
+              <span class="mode-dot"></span> Gemini AI Active
+            </span>
+          {% else %}
+            <span class="mode-pill mock" title="Running in high-fidelity offline mock extraction mode">
+              <span class="mode-dot"></span> Mock AI Mode (Offline)
+            </span>
+          {% endif %}
+          <a href="{% url 'invoices:document_upload' %}" class="btn btn-primary btn-sm">
+            <span>+ Upload Invoice</span>
+          </a>
+        </div>
+      </header>
+
+      <!-- Content Area -->
+      <div class="content-body">
+        {% if messages %}
+          <div class="messages-container">
+            {% for message in messages %}
+              <div class="alert alert-{{ message.tags }}">
+                <span>{{ message }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+
+  <!-- GSAP Animation Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="{% static 'js/main.js' %}"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

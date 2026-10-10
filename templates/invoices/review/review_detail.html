@@ -1,0 +1,468 @@
+{% extends "invoices/base.html" %}
+
+{% block page_title %}Invoice Review Workspace: #{{ invoice.invoice_number|default:"UNNUMBERED" }}{% endblock %}
+
+{% block content %}
+<div class="review-workspace">
+  <!-- Left Column: Original Document Viewer -->
+  <div class="document-pane">
+    <div class="document-pane-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1rem;">📄</span>
+        <strong style="font-size: 0.85rem; color: var(--text-main); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          {{ document.original_filename }}
+        </strong>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        {% if document.file %}
+          <a href="{{ document.file.url }}" target="_blank" class="btn btn-secondary btn-sm" title="Open in new window">
+            Pop Out ↗
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="document-viewer">
+      {% if document.file %}
+        {% if document.file_type == 'pdf' %}
+          <iframe src="{{ document.file.url }}#toolbar=0&navpanes=0" title="PDF Document Viewer"></iframe>
+        {% else %}
+          <img src="{{ document.file.url }}" alt="Invoice Document Scan">
+        {% endif %}
+      {% else %}
+        <div style="color: #cbd5e1; font-size: 0.85rem;">No document file attached</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Right Column: Interactive Review & Editor -->
+  <div class="editor-pane">
+    <!-- Extraction Header Banner -->
+    <div style="display: flex; align-items: center; justify-content: space-between; background: #ffffff; padding: 12px 18px; border-radius: var(--radius); border: 1px solid var(--border-color);">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span class="badge badge-{{ invoice.approval_status|lower|slugify }}">
+          {{ invoice.get_approval_status_display }}
+        </span>
+        <span style="font-size: 0.8rem; color: var(--text-muted);">
+          Extracted via <strong>{{ document.extraction_mode_used|upper }}</strong>
+        </span>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">AI Confidence:</span>
+        <div style="width: 50px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden;">
+          <div style="width: {% widthratio document.confidence_score 1 100 %}%; height: 100%; background: {% if document.confidence_score >= 0.8 %}#10b981{% else %}#ef4444{% endif %};"></div>
+        </div>
+        <span style="font-size: 0.8rem; font-weight: 700; color: {% if document.confidence_score >= 0.8 %}#047857{% else %}#b91c1c{% endif %};">
+          {% widthratio document.confidence_score 1 100 %}%
+        </span>
+      </div>
+    </div>
+
+    <!-- Active Validation Issues Panel -->
+    {% if validation_issues %}
+      <div class="issues-panel {% if unresolved_blocking_count == 0 %}warnings-only{% endif %}">
+        <div class="issues-panel-header">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span>⚠️</span>
+            <span>Independent Validation Findings ({{ validation_issues.count }})</span>
+          </div>
+          {% if unresolved_blocking_count > 0 %}
+            <span style="font-size: 0.72rem; background: #ef4444; color: #fff; padding: 2px 6px; border-radius: 4px;">
+              {{ unresolved_blocking_count }} Blocking
+            </span>
+          {% endif %}
+        </div>
+
+        {% for issue in validation_issues %}
+          <div class="issue-item {% if issue.is_resolved %}resolved{% endif %}">
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="badge {% if issue.severity == 'ERROR' %}badge-failed{% else %}badge-flagged-issues{% endif %}">
+                  {{ issue.severity }}
+                </span>
+                <strong style="font-size: 0.82rem; color: var(--text-main);">{{ issue.get_issue_type_display }}</strong>
+              </div>
+              <div style="color: #475569; font-size: 0.78rem; margin-top: 4px; line-height: 1.4;">
+                {{ issue.message }}
+              </div>
+              {% if issue.is_resolved %}
+                <div style="color: #059669; font-size: 0.72rem; margin-top: 4px;">
+                  ✓ Resolved by {{ issue.resolved_by.username }} ({{ issue.resolution_notes|default:"Acknowledged" }})
+                </div>
+              {% endif %}
+            </div>
+
+            {% if not issue.is_resolved %}
+              <div>
+                <form method="POST" action="{% url 'invoices:issue_resolve' issue.id %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="resolution_notes" value="Verified & resolved in review workspace">
+                  <button type="submit" class="btn btn-secondary btn-sm" style="font-size: 0.72rem; white-space: nowrap;">
+                    Resolve Issue ✓
+                  </button>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <!-- Main Edit Form -->
+    <form method="POST" action="{% url 'invoices:invoice_save' invoice.id %}" id="invoice-form">
+      {% csrf_token %}
+
+      <!-- Invoice Header Card -->
+      <div class="card" style="margin-bottom: 16px;">
+        <div class="card-header">
+          <span class="card-title">Invoice Header Details</span>
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Python Decimal precision arithmetic</span>
+        </div>
+        <div class="card-body">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <!-- Supplier -->
+            <div class="form-group" style="grid-column: span 2;">
+              <label class="form-label" for="id_supplier_id">Recognized Supplier / Vendor</label>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <select name="supplier_id" id="id_supplier_id" class="form-select">
+                  <option value="">-- Select from Approved Suppliers --</option>
+                  {% for sup in suppliers %}
+                    <option value="{{ sup.id }}" {% if invoice.supplier_id == sup.id %}selected{% endif %}>
+                      {{ sup.name }} (Tax ID: {{ sup.tax_id|default:"N/A" }})
+                    </option>
+                  {% endfor %}
+                  <option value="new" {% if not invoice.supplier %}selected{% endif %}>+ Register Raw Supplier as New</option>
+                </select>
+
+                <input type="text" name="supplier_name_raw" id="id_supplier_name_raw" class="form-control" value="{{ invoice.supplier_name_raw }}" placeholder="Raw extracted vendor name">
+              </div>
+              {% if not invoice.supplier and invoice.supplier_name_raw %}
+                <div style="margin-top: 6px;">
+                  <label style="font-size: 0.75rem; color: #b45309; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                    <input type="checkbox" name="create_new_supplier" value="on" checked>
+                    <span>Automatically add '{{ invoice.supplier_name_raw }}' to Approved Supplier registry upon saving</span>
+                  </label>
+                </div>
+              {% endif %}
+            </div>
+
+            <!-- Invoice Number -->
+            <div class="form-group">
+              <label class="form-label" for="id_invoice_number">Invoice Reference Number</label>
+              <input type="text" name="invoice_number" id="id_invoice_number" class="form-control form-control-mono" value="{{ invoice.invoice_number }}" placeholder="e.g. INV-2026-001" required>
+            </div>
+
+            <!-- Currency -->
+            <div class="form-group">
+              <label class="form-label" for="id_currency">Currency (ISO Code)</label>
+              <input type="text" name="currency" id="id_currency" class="form-control form-control-mono" value="{{ invoice.currency }}" maxlength="3" required>
+            </div>
+
+            <!-- Invoice Date -->
+            <div class="form-group">
+              <label class="form-label" for="id_invoice_date">Invoice Issue Date</label>
+              <input type="date" name="invoice_date" id="id_invoice_date" class="form-control" value="{{ invoice.invoice_date|date:'Y-m-d' }}" required>
+            </div>
+
+            <!-- Due Date -->
+            <div class="form-group">
+              <label class="form-label" for="id_due_date">Payment Due Date</label>
+              <input type="date" name="due_date" id="id_due_date" class="form-control" value="{{ invoice.due_date|date:'Y-m-d' }}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Itemized Line Items Table Card -->
+      <div class="card" style="margin-bottom: 16px;">
+        <div class="card-header">
+          <div>
+            <span class="card-title">Line Items & GL Account Coding</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 2px;">
+              Codes suggested from vendor history and keyword analysis (never invented)
+            </span>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="add-line-btn">+ Add Line</button>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table" id="line-items-table">
+            <thead>
+              <tr>
+                <th style="width: 30px; text-align: center;">#</th>
+                <th>Description</th>
+                <th style="width: 90px;">Qty</th>
+                <th style="width: 120px;">Unit Price</th>
+                <th style="width: 130px;">Amount</th>
+                <th style="width: 220px;">GL Account Code</th>
+                <th style="width: 40px;"></th>
+              </tr>
+            </thead>
+            <tbody id="line-items-tbody">
+              {% for line in invoice.line_items.all %}
+                <tr class="line-row">
+                  <td style="text-align: center; font-weight: 600; color: var(--text-muted);">{{ forloop.counter }}</td>
+                  <td>
+                    <input type="hidden" name="line_id[]" value="{{ line.id }}">
+                    <input type="text" name="line_description[]" class="form-control line-desc-input" value="{{ line.description }}" required>
+                    <div class="suggestion-container">
+                      {% if line.suggested_account_code %}
+                        <div class="suggestion-chip" title="{{ line.suggestion_reason }}">
+                          <span>✨ AI Match: {{ line.suggested_account_code.code }} ({% widthratio line.suggestion_confidence 1 100 %}%)</span>
+                        </div>
+                      {% else %}
+                        <div class="suggestion-chip none" title="{{ line.suggestion_reason }}">
+                          <span>No history match — manual code required</span>
+                        </div>
+                      {% endif %}
+                    </div>
+                  </td>
+                  <td style="width: 90px;">
+                    <input type="number" name="line_quantity[]" class="form-control form-control-mono line-qty-input" value="{{ line.quantity }}" step="0.01" min="0">
+                  </td>
+                  <td style="width: 120px;">
+                    <input type="number" name="line_unit_price[]" class="form-control form-control-mono line-price-input" value="{{ line.unit_price }}" step="0.01" min="0">
+                  </td>
+                  <td style="width: 130px;">
+                    <input type="number" name="line_total[]" class="form-control form-control-mono line-total-input" value="{{ line.total_amount }}" step="0.01" min="0">
+                  </td>
+                  <td style="width: 220px;">
+                    <select name="line_account_code[]" class="form-select line-account-select">
+                      <option value="">-- Select GL Account --</option>
+                      {% for acc in account_codes %}
+                        <option value="{{ acc.id }}" {% if line.account_code_id == acc.id %}selected{% endif %}>
+                          {{ acc.code }} - {{ acc.name }}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                  <td style="text-align: center; width: 50px;">
+                    <button type="button" class="btn btn-secondary btn-sm remove-line-btn" title="Remove line" style="color: #ef4444; padding: 4px 8px;">✕</button>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr class="line-row">
+                  <td style="text-align: center; font-weight: 600; color: var(--text-muted);">1</td>
+                  <td>
+                    <input type="hidden" name="line_id[]" value="">
+                    <input type="text" name="line_description[]" class="form-control line-desc-input" placeholder="Line description..." required>
+                    <div class="suggestion-container"></div>
+                  </td>
+                  <td style="width: 90px;">
+                    <input type="number" name="line_quantity[]" class="form-control form-control-mono line-qty-input" value="1.00" step="0.01" min="0">
+                  </td>
+                  <td style="width: 120px;">
+                    <input type="number" name="line_unit_price[]" class="form-control form-control-mono line-price-input" value="0.00" step="0.01" min="0">
+                  </td>
+                  <td style="width: 130px;">
+                    <input type="number" name="line_total[]" class="form-control form-control-mono line-total-input" value="0.00" step="0.01" min="0">
+                  </td>
+                  <td style="width: 220px;">
+                    <select name="line_account_code[]" class="form-select line-account-select">
+                      <option value="">-- Select GL Account --</option>
+                      {% for acc in account_codes %}
+                        <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                  <td style="text-align: center; width: 50px;">
+                    <button type="button" class="btn btn-secondary btn-sm remove-line-btn" title="Remove line" style="color: #ef4444; padding: 4px 8px;">✕</button>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Totals Calculation Block -->
+        <div style="padding: 16px 20px; background-color: #f8fafc; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
+          <div style="width: 320px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Net Subtotal:</span>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="font-size: 0.8rem; color: var(--text-muted);">{{ invoice.currency }}</span>
+                <input type="number" id="id_subtotal" name="subtotal" class="form-control form-control-mono" style="width: 130px; text-align: right;" value="{{ invoice.subtotal }}" step="0.01">
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Tax Amount:</span>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="font-size: 0.8rem; color: var(--text-muted);">{{ invoice.currency }}</span>
+                <input type="number" id="id_tax_amount" name="tax_amount" class="form-control form-control-mono" style="width: 130px; text-align: right;" value="{{ invoice.tax_amount }}" step="0.01">
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 1px solid #cbd5e1;">
+              <span style="font-size: 0.95rem; font-weight: 700; color: var(--text-main);">Grand Total:</span>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="font-size: 0.95rem; font-weight: 700;">{{ invoice.currency }}</span>
+                <input type="number" id="id_total_amount" name="total_amount" class="form-control form-control-mono" style="width: 130px; text-align: right; font-weight: 700; font-size: 1rem;" value="{{ invoice.total_amount }}" step="0.01">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes Field -->
+      <div class="card" style="margin-bottom: 24px;">
+        <div class="card-header">
+          <span class="card-title">Payment Terms & Auditor Notes</span>
+        </div>
+        <div class="card-body">
+          <textarea name="notes" class="form-control" rows="2" placeholder="Payment terms or auditor notes...">{{ invoice.notes }}</textarea>
+        </div>
+      </div>
+
+      <!-- Sticky Action Bar -->
+      <div class="sticky-actions-bar">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button type="submit" class="btn btn-secondary">
+            <span>💾 Save & Re-verify</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" data-modal-target="audit-modal">
+            <span>📜 Audit History ({{ audit_logs.count }})</span>
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px;">
+          {% if invoice.approval_status != 'REJECTED' %}
+            <button type="button" class="btn btn-danger btn-sm" data-modal-target="reject-modal">
+              Reject
+            </button>
+          {% endif %}
+
+          {% if invoice.approval_status == 'APPROVED' %}
+            <button type="button" class="btn btn-primary" data-modal-target="export-modal" {% if not can_export %}disabled{% endif %}>
+              <span>🏛️ Export to Accounting Ledger →</span>
+            </button>
+          {% elif invoice.approval_status == 'EXPORTED' %}
+            <span style="font-size: 0.85rem; color: #047857; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+              ✓ Synced to Draft Bill {{ invoice.accounting_export.external_bill_id }}
+            </span>
+          {% else %}
+            <button type="button" class="btn btn-success" data-modal-target="approve-modal" {% if not can_approve %}disabled title="Cannot approve: Unresolved blocking validation errors exist"{% endif %}>
+              <span>✓ Approve Invoice</span>
+            </button>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Reusable Account Options Template for Dynamic JS Addition -->
+<template id="account-options-template">
+  <option value="">-- Select GL Account --</option>
+  {% for acc in account_codes %}
+    <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+  {% endfor %}
+</template>
+
+<!-- Approve Modal -->
+<div class="modal-overlay" id="approve-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 style="font-size: 1rem; font-weight: 700;">Confirm Invoice Approval</h3>
+      <button type="button" style="background: none; border: none; font-size: 1.2rem; cursor: pointer;" data-modal-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size: 0.88rem; color: var(--text-main);">
+        You are approving <strong>Invoice #{{ invoice.invoice_number }}</strong> from <strong>{{ invoice.supplier.name|default:invoice.supplier_name_raw }}</strong> for <strong>{{ invoice.currency }} ${{ invoice.total_amount|floatformat:2 }}</strong>.
+      </p>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">
+        This action confirms all line items and calculations have been verified. The invoice will be unlocked for export into the general ledger accounting system.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+      <form method="POST" action="{% url 'invoices:invoice_approve' invoice.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-success">Confirm & Approve</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="modal-overlay" id="reject-modal">
+  <div class="modal-box">
+    <form method="POST" action="{% url 'invoices:invoice_reject' invoice.id %}">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h3 style="font-size: 1rem; font-weight: 700; color: #b91c1c;">Reject Invoice Document</h3>
+        <button type="button" style="background: none; border: none; font-size: 1.2rem; cursor: pointer;" data-modal-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="rejection_reason">Reason for Rejection (Required)</label>
+          <textarea name="rejection_reason" id="rejection_reason" class="form-control" rows="3" placeholder="State reason (e.g. fraudulent charges, incorrect bill to address, illegible scan)..." required></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-danger">Confirm Rejection</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal-overlay" id="export-modal">
+  <div class="modal-box">
+    <form method="POST" action="{% url 'invoices:invoice_export' invoice.id %}">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h3 style="font-size: 1rem; font-weight: 700;">Export to General Ledger Accounting</h3>
+        <button type="button" style="background: none; border: none; font-size: 1.2rem; cursor: pointer;" data-modal-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.88rem; color: var(--text-main);">
+          Export draft accounts payable bill for <strong>Invoice #{{ invoice.invoice_number }}</strong> to simulated Accounting Ledger.
+        </p>
+        <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; margin-top: 12px; font-size: 0.8rem;">
+          <div><strong>Supplier:</strong> {{ invoice.supplier.name|default:invoice.supplier_name_raw }}</div>
+          <div><strong>Total Payable:</strong> {{ invoice.currency }} ${{ invoice.total_amount|floatformat:2 }}</div>
+          <div><strong>Line Items:</strong> {{ invoice.line_items.count }} itemized lines with GL coding</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Create Draft Bill Now</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Audit Trail Modal -->
+<div class="modal-overlay" id="audit-modal">
+  <div class="modal-box" style="max-width: 750px;">
+    <div class="modal-header">
+      <h3 style="font-size: 1rem; font-weight: 700;">Complete Immutable Audit Trail</h3>
+      <button type="button" style="background: none; border: none; font-size: 1.2rem; cursor: pointer;" data-modal-close>✕</button>
+    </div>
+    <div class="modal-body" style="max-height: 60vh;">
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        {% for log in audit_logs %}
+          <div style="border-left: 3px solid #3b82f6; padding-left: 14px; font-size: 0.82rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong style="color: var(--text-main);">{{ log.get_action_display }}</strong>
+              <span style="font-size: 0.72rem; color: var(--text-light);">{{ log.created_at|date:"Y-m-d H:i:s" }} UTC</span>
+            </div>
+            <div style="color: #475569; margin-top: 3px;">{{ log.description }}</div>
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 3px;">
+              By: <strong>{{ log.user.get_full_name|default:log.user.username|default:"System Engine" }}</strong>
+            </div>
+          </div>
+        {% empty %}
+          <div style="text-align: center; color: var(--text-muted); padding: 20px;">No audit events found.</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" data-modal-close>Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

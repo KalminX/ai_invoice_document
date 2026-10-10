@@ -1,0 +1,151 @@
+{% extends "invoices/base.html" %}
+
+{% block page_title %}General Ledger Accounting Integrations{% endblock %}
+
+{% block content %}
+<div class="metrics-grid" style="grid-template-columns: repeat(3, 1fr);">
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Total Draft Bills Exported</span>
+      <span class="metric-icon">🏛️</span>
+    </div>
+    <div class="metric-value">${{ total_exported_val|floatformat:2 }}</div>
+    <div class="metric-footer">{{ exports.count }} draft bills synced to accounting</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Approved & Ready to Export</span>
+      <span class="metric-icon">⏳</span>
+    </div>
+    <div class="metric-value" style="color: #2563eb;">{{ approved_pending_count }}</div>
+    <div class="metric-footer">Human approved, pending sync</div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-header">
+      <span class="metric-label">Connected Adapter</span>
+      <span class="metric-icon">🔌</span>
+    </div>
+    <div class="metric-value" style="font-size: 1.25rem; color: #7c3aed;">Mock Ledger</div>
+    <div class="metric-footer">Simulated Enterprise ERP / Xero Adapter Interface</div>
+  </div>
+</div>
+
+{% if approved_pending_count > 0 %}
+  <div class="card" style="background-color: #eff6ff; border-color: #bfdbfe; margin-bottom: 20px;">
+    <div class="card-body" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px;">
+      <div>
+        <h4 style="font-size: 0.95rem; font-weight: 700; color: #1e40af;">
+          {{ approved_pending_count }} Approved Invoice{{ approved_pending_count|pluralize }} Ready for Accounting Sync
+        </h4>
+        <p style="font-size: 0.8rem; color: #3b82f6; margin-top: 2px;">
+          All blocking validation checks have been cleared and human approval is recorded.
+        </p>
+      </div>
+      <form method="POST" action="{% url 'invoices:batch_export' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">
+          <span>🚀 Export All {{ approved_pending_count }} Approved Invoices Now</span>
+        </button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">Synchronized Draft Bills Ledger</span>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>External Bill ID</th>
+          <th>Supplier</th>
+          <th>Invoice #</th>
+          <th>Amount</th>
+          <th>Adapter</th>
+          <th>Export Timestamp</th>
+          <th>Status</th>
+          <th style="text-align: right;">Payload / Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for exp in exports %}
+          <tr>
+            <td>
+              <code style="font-weight: 700; color: #1e293b;">{{ exp.external_bill_id|default:"PENDING" }}</code>
+            </td>
+            <td style="font-weight: 600;">
+              {{ exp.invoice.supplier.name|default:exp.invoice.supplier_name_raw }}
+            </td>
+            <td>
+              <code>#{{ exp.invoice.invoice_number }}</code>
+            </td>
+            <td style="font-family: var(--font-mono); font-weight: 700;">
+              {{ exp.invoice.currency }} ${{ exp.invoice.total_amount|floatformat:2 }}
+            </td>
+            <td>
+              <span style="font-size: 0.75rem; text-transform: uppercase; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
+                {{ exp.adapter_name }}
+              </span>
+            </td>
+            <td style="font-size: 0.78rem; color: var(--text-muted);">
+              {{ exp.exported_at|date:"Y-m-d H:i:s" }} UTC
+            </td>
+            <td>
+              <span class="badge {% if exp.status == 'SUCCESS' %}badge-approved{% else %}badge-failed{% endif %}">
+                {{ exp.get_status_display }}
+              </span>
+            </td>
+            <td style="text-align: right;">
+              <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+                <button type="button" class="btn btn-secondary btn-sm" data-modal-target="payload-modal-{{ exp.id }}">
+                  View JSON
+                </button>
+                <a href="{% url 'invoices:invoice_review' exp.invoice.id %}" class="btn btn-secondary btn-sm">
+                  Review
+                </a>
+                {% if exp.status == 'FAILED' %}
+                  <form method="POST" action="{% url 'invoices:retry_export' exp.id %}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary btn-sm">Retry</button>
+                  </form>
+                {% endif %}
+              </div>
+
+              <!-- JSON Payload Modal -->
+              <div class="modal-overlay" id="payload-modal-{{ exp.id }}">
+                <div class="modal-box" style="max-width: 700px; text-align: left;">
+                  <div class="modal-header">
+                    <h3 style="font-size: 0.95rem; font-weight: 700;">Accounting Payload: {{ exp.external_bill_id }}</h3>
+                    <button type="button" style="background: none; border: none; font-size: 1.2rem; cursor: pointer;" data-modal-close>✕</button>
+                  </div>
+                  <div class="modal-body">
+                    <h5 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Draft Bill Request Payload</h5>
+                    <pre class="code-block">{{ exp.request_payload|pprint }}</pre>
+
+                    <h5 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin: 12px 0 6px;">Response Payload</h5>
+                    <pre class="code-block">{{ exp.response_payload|pprint }}</pre>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-modal-close>Close</button>
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="8" style="text-align: center; padding: 40px; color: var(--text-muted);">
+              No bills exported to the accounting system yet. Approved invoices will appear here after export.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

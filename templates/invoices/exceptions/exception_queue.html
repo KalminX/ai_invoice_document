@@ -1,0 +1,155 @@
+{% extends "invoices/base.html" %}
+
+{% block page_title %}Exception Queue & Triage{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header" style="flex-wrap: wrap; gap: 12px;">
+    <!-- Filter Badges -->
+    <div style="display: flex; gap: 6px; overflow-x: auto;">
+      <a href="{% url 'invoices:exception_queue' %}?category=ALL&status={{ current_status }}{% if search_query %}&q={{ search_query }}{% endif %}" class="btn btn-sm {% if current_category == 'ALL' %}btn-primary{% else %}btn-secondary{% endif %}">
+        All Exceptions ({{ counts.ALL }})
+      </a>
+      <a href="{% url 'invoices:exception_queue' %}?category=ARITHMETIC&status={{ current_status }}{% if search_query %}&q={{ search_query }}{% endif %}" class="btn btn-sm {% if current_category == 'ARITHMETIC' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Math Mismatches ({{ counts.ARITHMETIC }})
+      </a>
+      <a href="{% url 'invoices:exception_queue' %}?category=DUPLICATES&status={{ current_status }}{% if search_query %}&q={{ search_query }}{% endif %}" class="btn btn-sm {% if current_category == 'DUPLICATES' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Duplicates ({{ counts.DUPLICATES }})
+      </a>
+      <a href="{% url 'invoices:exception_queue' %}?category=UNKNOWN_SUPPLIER&status={{ current_status }}{% if search_query %}&q={{ search_query }}{% endif %}" class="btn btn-sm {% if current_category == 'UNKNOWN_SUPPLIER' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Unknown Suppliers ({{ counts.UNKNOWN_SUPPLIER }})
+      </a>
+      <a href="{% url 'invoices:exception_queue' %}?category=MISSING_FIELDS&status={{ current_status }}{% if search_query %}&q={{ search_query }}{% endif %}" class="btn btn-sm {% if current_category == 'MISSING_FIELDS' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Missing Fields ({{ counts.MISSING_FIELDS }})
+      </a>
+      <a href="{% url 'invoices:exception_queue' %}?category=LOW_CONFIDENCE&status={{ current_status }}{% if search_query %}&q={{ search_query }}{% endif %}" class="btn btn-sm {% if current_category == 'LOW_CONFIDENCE' %}btn-primary{% else %}btn-secondary{% endif %}">
+        Low Confidence ({{ counts.LOW_CONFIDENCE }})
+      </a>
+    </div>
+
+    <!-- Status & Search -->
+    <div style="display: flex; gap: 8px;">
+      <form method="GET" action="{% url 'invoices:exception_queue' %}" style="display: flex; gap: 6px;">
+        <input type="hidden" name="category" value="{{ current_category }}">
+        <select name="status" class="form-select" style="width: 140px; padding: 5px 8px; font-size: 0.8rem;" onchange="this.form.submit()">
+          <option value="UNRESOLVED" {% if current_status == 'UNRESOLVED' %}selected{% endif %}>Unresolved Only</option>
+          <option value="RESOLVED" {% if current_status == 'RESOLVED' %}selected{% endif %}>Resolved Only</option>
+          <option value="ALL" {% if current_status == 'ALL' %}selected{% endif %}>All Issues</option>
+        </select>
+        <input type="text" name="q" value="{{ search_query }}" class="form-control" placeholder="Search message, supplier..." style="width: 180px; padding: 5px 8px; font-size: 0.8rem;">
+        <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Severity</th>
+          <th>Anomaly Type</th>
+          <th>Description & Root Cause</th>
+          <th>Supplier & Invoice #</th>
+          <th>Blocking</th>
+          <th>Status</th>
+          <th style="text-align: right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in page_obj %}
+          <tr {% if issue.is_resolved %}style="opacity: 0.6; background-color: #f8fafc;"{% endif %}>
+            <td>
+              <span class="badge {% if issue.severity == 'ERROR' %}badge-failed{% else %}badge-flagged-issues{% endif %}">
+                {{ issue.severity }}
+              </span>
+            </td>
+
+            <td style="font-weight: 600; font-size: 0.82rem;">
+              {{ issue.get_issue_type_display }}
+            </td>
+
+            <td style="max-width: 380px; font-size: 0.8rem; color: #334155;">
+              <div>{{ issue.message }}</div>
+              {% if issue.is_resolved %}
+                <div style="font-size: 0.72rem; color: #059669; margin-top: 3px;">
+                  ✓ Resolved by {{ issue.resolved_by.username }} ({{ issue.resolution_notes|default:"Acknowledged" }})
+                </div>
+              {% endif %}
+            </td>
+
+            <td style="font-size: 0.8rem;">
+              {% if issue.invoice %}
+                <div style="font-weight: 600;">{{ issue.invoice.supplier.name|default:issue.invoice.supplier_name_raw|default:"Unknown Vendor" }}</div>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">
+                  Invoice #{{ issue.invoice.invoice_number|default:"N/A" }}
+                </div>
+              {% else %}
+                <span style="color: var(--text-light);">{{ issue.document.original_filename }}</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if issue.is_blocking %}
+                <span style="color: #b91c1c; font-size: 0.72rem; font-weight: 700; background: #fee2e2; padding: 2px 6px; border-radius: 4px;">
+                  Blocking
+                </span>
+              {% else %}
+                <span style="color: #64748b; font-size: 0.72rem;">Warning</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if issue.is_resolved %}
+                <span style="color: #047857; font-weight: 600; font-size: 0.75rem;">Resolved</span>
+              {% else %}
+                <span style="color: #b45309; font-weight: 600; font-size: 0.75rem;">Action Needed</span>
+              {% endif %}
+            </td>
+
+            <td style="text-align: right;">
+              <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+                {% if issue.invoice %}
+                  <a href="{% url 'invoices:invoice_review' issue.invoice.id %}" class="btn btn-primary btn-sm">
+                    Open Review →
+                  </a>
+                {% endif %}
+
+                {% if not issue.is_resolved %}
+                  <form method="POST" action="{% url 'invoices:issue_resolve' issue.id %}" style="display: inline;">
+                    {% csrf_token %}
+                    <input type="hidden" name="resolution_notes" value="Quick resolved from Exception Queue">
+                    <button type="submit" class="btn btn-secondary btn-sm" title="Acknowledge / Resolve">✓</button>
+                  </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 40px; color: var(--text-muted);">
+              🎉 No exception issues found matching this filter!
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  {% if page_obj.has_other_pages %}
+    <div style="padding: 16px 20px; border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
+      <span style="font-size: 0.8rem; color: var(--text-muted);">
+        Showing page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+      </span>
+      <div style="display: flex; gap: 6px;">
+        {% if page_obj.has_previous %}
+          <a href="?page={{ page_obj.previous_page_number }}&category={{ current_category }}&status={{ current_status }}{% if search_query %}&q={{ search_query }}{% endif %}" class="btn btn-secondary btn-sm">← Previous</a>
+        {% endif %}
+        {% if page_obj.has_next %}
+          <a href="?page={{ page_obj.next_page_number }}&category={{ current_category }}&status={{ current_status }}{% if search_query %}&q={{ search_query }}{% endif %}" class="btn btn-secondary btn-sm">Next →</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
